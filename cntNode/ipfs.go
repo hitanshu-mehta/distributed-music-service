@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	cid "github.com/ipfs/go-cid"
 	config "github.com/ipfs/go-ipfs-config"
 	files "github.com/ipfs/go-ipfs-files"
 	"github.com/ipfs/go-ipfs/core"
@@ -16,9 +17,10 @@ import (
 	"github.com/ipfs/go-ipfs/plugin/loader"
 	"github.com/ipfs/go-ipfs/repo/fsrepo"
 	icore "github.com/ipfs/interface-go-ipfs-core"
+	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
-type CID string
+const tmpDownloadFilesDirName = "tmp-download-files"
 
 // IpfsService interacts with ipfs node.
 type IpfsService struct {
@@ -41,7 +43,7 @@ func NewIpfsService(ctx context.Context, logger *log.Logger) *IpfsService {
 func (ipfsService *IpfsService) Start() error {
 	var err error
 
-	ipfsService.ipfs, err = ipfsService.spawnEphemeral(ipfsService.ctx)
+	ipfsService.ipfs, err = ipfsService.spawnDefault(ipfsService.ctx)
 	if err != nil {
 		return err
 	}
@@ -50,22 +52,56 @@ func (ipfsService *IpfsService) Start() error {
 }
 
 // UploadFile upload the file to ipfs node and returns the CID.
-func (ipfsService *IpfsService) UploadFile(inputFilePath string) (CID, error) {
+func (ipfsService *IpfsService) UploadFile(inputFilePath string) (*cid.Cid, error) {
 	someFile, err := ipfsService.getUnixfsNode("./" + inputFilePath)
 	if err != nil {
 		ipfsService.logger.Print("Could not get the file", err)
-		return "", err
+		return nil, err
 	}
 
 	cidFile, err := ipfsService.ipfs.Unixfs().Add(ipfsService.ctx, someFile)
 	if err != nil {
 		ipfsService.logger.Print("Failed to upload the file to IPFS.", err)
-		return "", err
+		return nil, err
 	}
 
-	ipfsService.logger.Printf("Successfully uploaded the file to IPFS. cid %v", cidFile.String())
+	ipfsService.logger.Printf("Successfully uploaded the file to IPFS. cid: %v", cidFile.Cid())
 
-	return CID(cidFile.String()), nil
+	CID := cidFile.Cid()
+	return &CID, nil
+}
+
+// DownloadFile donwload the file having given cid, stores the file in local filesystem and
+// returns the path to the downloaded file.
+func (ipfsService *IpfsService) DownloadFile(cid cid.Cid) (path.Path, error) {
+	cidFile := path.IpfsPath(cid)
+
+	outputBasePath := ipfsService.getOrCreateTmpDir(tmpDownloadFilesDirName)
+	outputPathFile := path.Join(path.New(outputBasePath), cidFile.Cid().String())
+
+	rootNodeFile, err := ipfsService.ipfs.Unixfs().Get(ipfsService.ctx, cidFile)
+	if err != nil {
+		ipfsService.logger.Printf("Failed to download file having CID: %v", cid.String())
+		return nil, err
+	}
+
+	err = files.WriteTo(rootNodeFile, outputPathFile.String())
+	if err != nil {
+		ipfsService.logger.Printf("Could not write out the fetched CID: %v", cid.String())
+		return nil, err
+	}
+
+	return outputPathFile, nil
+}
+
+// getOrCreateTmpDir returns the path of temparory directory to store the upload files.
+// if directory does not exists then new one is created.
+func (ipfsService *IpfsService) getOrCreateTmpDir(name string) string {
+	if err := os.Mkdir(name, os.ModePerm); err != nil {
+		ipfsService.logger.Print("Temparory directory already exits.")
+	}
+
+	return name
 }
 
 func (ipfsService *IpfsService) getUnixfsNode(path string) (files.Node, error) {
@@ -80,6 +116,21 @@ func (ipfsService *IpfsService) getUnixfsNode(path string) (files.Node, error) {
 	}
 
 	return f, nil
+}
+
+// Spawns a node on the default repo location, if the repo exists
+func (ipfsService *IpfsService) spawnDefault(ctx context.Context) (icore.CoreAPI, error) {
+	defaultPath, err := config.PathRoot()
+	if err != nil {
+		// shouldn't be possible
+		return nil, err
+	}
+
+	if err := ipfsService.setupPlugins(defaultPath); err != nil {
+		return nil, err
+	}
+
+	return ipfsService.createNode(ctx, defaultPath)
 }
 
 // Spawns a node to be used just for this run (i.e. creates a tmp repo)
@@ -114,6 +165,8 @@ func (ipfsService *IpfsService) setupPlugins(externalPluginsPath string) error {
 		return fmt.Errorf("error initializing plugins: %s", err)
 	}
 
+	ipfsService.logger.Println("IPFS plugins loaded.")
+
 	return nil
 }
 
@@ -147,7 +200,6 @@ func (ipfsService *IpfsService) createNode(ctx context.Context, repoPath string)
 	}
 
 	// Construct the node
-
 	nodeOptions := &core.BuildCfg{
 		Online:  true,
 		Routing: libp2p.DHTOption, // This option sets the node to be a full DHT node (both fetching and storing DHT Records)
@@ -162,20 +214,4 @@ func (ipfsService *IpfsService) createNode(ctx context.Context, repoPath string)
 
 	// Attach the Core API to the constructed node
 	return coreapi.NewCoreAPI(node)
-}
-
-// Spawns a node on the default repo location, if the repo exists
-func (ipfsService *IpfsService) spawnDefault(ctx context.Context) (icore.CoreAPI, error) {
-	defaultPath, err := config.PathRoot()
-	if err != nil {
-		// shouldn't be possible
-		return nil, err
-	}
-
-	if err := ipfsService.setupPlugins(defaultPath); err != nil {
-		return nil, err
-
-	}
-
-	return ipfsService.createNode(ctx, defaultPath)
 }

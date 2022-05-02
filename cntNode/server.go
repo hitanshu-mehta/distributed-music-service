@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/ipfs/go-cid"
 )
 
-const tmpFilesDirName = "tmp-files"
+const tmpUploadFilesDirName = "tmp-upload-files"
 
 type ErrorInfo struct {
 	Msg string
@@ -38,15 +40,12 @@ type CntNode struct {
 func NewCntNode(addr string, writeTimeout,
 	readTimeout, idleTimeout, gracefulTimeout time.Duration,
 	logger log.Logger) *CntNode {
-
 	return &CntNode{
 		addr:            addr,
 		writeTimeout:    writeTimeout,
 		readTimeout:     readTimeout,
 		idleTimeout:     idleTimeout,
 		gracefulTimeout: gracefulTimeout,
-
-		ipfs: NewIpfsService(context.Background(), &logger),
 
 		logger: logger,
 	}
@@ -66,9 +65,14 @@ func (cn *CntNode) ListenAndServe() {
 		ReadTimeout:  cn.readTimeout,
 	}
 
-	cn.ipfs.Start()
-
 	go func() {
+		cn.logger.Println("starting content node.")
+		// Start IPFS service.
+		cn.ipfs = NewIpfsService(context.Background(), &cn.logger)
+		if err := cn.ipfs.Start(); err != nil {
+			cn.logger.Panic(err)
+		}
+
 		cn.logger.Println("content node is ready to serve request.")
 		if err := cn.srv.ListenAndServe(); err != nil {
 			cn.logger.Println(err)
@@ -97,7 +101,7 @@ func (cn *CntNode) ListenAndServe() {
 }
 
 type UploadFileResponse struct {
-	Cid CID
+	CID string
 }
 
 func (cn *CntNode) uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -123,7 +127,7 @@ func (cn *CntNode) uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create a temporary file within our temp-files directory that follows
 	// a particular naming pattern
-	tempFile, err := ioutil.TempFile(cn.getOrCreateTmpDir(tmpFilesDirName), "*-"+header.Filename)
+	tempFile, err := ioutil.TempFile(cn.getOrCreateTmpDir(tmpUploadFilesDirName), "*-"+header.Filename)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(&ErrorInfo{
@@ -151,7 +155,7 @@ func (cn *CntNode) uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(&UploadFileResponse{
-		Cid: cid,
+		CID: cid.String(),
 	})
 
 	if err = os.Remove(tempFile.Name()); err != nil {
@@ -172,5 +176,48 @@ func (cn *CntNode) getOrCreateTmpDir(name string) string {
 }
 
 func (cn *CntNode) downloadHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Print("Downloading file")
+	vars := mux.Vars(r)
+	c, ok := vars["cid"]
+	if !ok {
+		cn.logger.Print("CID is not present in the download request.")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "CID is not present in the download request.",
+		})
+		return
+	}
+
+	cn.logger.Println(c)
+
+	cid, err := cid.Decode(c)
+	if err != nil {
+		cn.logger.Print("Failed to decode the CID.")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "Failed to decode the CID.",
+		})
+
+		return
+	}
+
+	cn.logger.Println(cid)
+
+	downloadedFilePath, err := cn.ipfs.DownloadFile(cid)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "Failed to download file from IPFS network.",
+		})
+
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(cid.String()))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, downloadedFilePath.String())
+
+	if err := os.Remove(downloadedFilePath.String()); err != nil {
+		cn.logger.Printf("Failed to remvoe tempory downloaded file. file path: %v", downloadedFilePath.String())
+	}
+
+	cn.logger.Printf("Successfully downloaded the file having cid %v", cid)
 }

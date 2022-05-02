@@ -19,7 +19,7 @@ type CntNodeCmd struct {
 	WriteTimeout    time.Duration `help:"Write timeout duration of http server." default:"15s" type:"time.Duration"`
 	ReadTimeout     time.Duration `help:"Read timeout duration of http server." default:"15s" type:"time.Duration"`
 	IdleTimeout     time.Duration `help:"Idle timeout duration of http server." default:"15s" type:"time.Duration"`
-	GracefulTimeout time.Duration `help:"Graceful shutdown timeout duration of http server." default:"60s" type:"time.Duration"`
+	GracefulTimeout time.Duration `help:"Graceful shutdown timeout duration of http server." default:"15s" type:"time.Duration"`
 }
 
 func (cntNodeCmd *CntNodeCmd) Run(ctx *Context) error {
