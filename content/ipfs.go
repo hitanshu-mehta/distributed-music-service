@@ -1,4 +1,4 @@
-package content_node
+package content
 
 import (
 	"context"
