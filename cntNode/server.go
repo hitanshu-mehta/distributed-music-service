@@ -33,12 +33,16 @@ type CntNode struct {
 	idleTimeout     time.Duration
 	gracefulTimeout time.Duration
 
+	isTemporary bool
+
 	logger log.Logger
 }
 
 // NewCntNode creates new instance of the content node.
-func NewCntNode(addr string, writeTimeout,
+func NewCntNode(addr string,
+	writeTimeout,
 	readTimeout, idleTimeout, gracefulTimeout time.Duration,
+	temparoryNode bool,
 	logger log.Logger) *CntNode {
 	return &CntNode{
 		addr:            addr,
@@ -46,6 +50,8 @@ func NewCntNode(addr string, writeTimeout,
 		readTimeout:     readTimeout,
 		idleTimeout:     idleTimeout,
 		gracefulTimeout: gracefulTimeout,
+
+		isTemporary: temparoryNode,
 
 		logger: logger,
 	}
@@ -104,6 +110,8 @@ type UploadFileResponse struct {
 	CID string
 }
 
+// uploadHandler reads the multipart file from the body and creates temparory file in local filesytem
+// Local file is then uploaded to the ipfs network. Ultimately, local file is deleted.
 func (cn *CntNode) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -111,9 +119,6 @@ func (cn *CntNode) uploadHandler(w http.ResponseWriter, r *http.Request) {
 	// upload of 10 MB files.
 	r.ParseMultipartForm(10 << 20)
 
-	// FormFile returns the first file for the given key `myFile`
-	// it also returns the FileHeader so we can get the Filename,
-	// the Header and the size of the file
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -158,9 +163,11 @@ func (cn *CntNode) uploadHandler(w http.ResponseWriter, r *http.Request) {
 		CID: cid.String(),
 	})
 
-	if err = os.Remove(tempFile.Name()); err != nil {
-		cn.logger.Print("Failed to remove tmp file.")
-	}
+	defer func() {
+		if err = os.Remove(tempFile.Name()); err != nil {
+			cn.logger.Print("Failed to remove tmp file.")
+		}
+	}()
 
 	cn.logger.Print("Uploaded file to IPFS node successfully.")
 }
@@ -175,6 +182,8 @@ func (cn *CntNode) getOrCreateTmpDir(name string) string {
 	return name
 }
 
+// downloadHandler parses and validate CID. If CID is valid then file is downloaded and stored locally before
+// sending it in response. Ultimately, this local file is deleted.
 func (cn *CntNode) downloadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	c, ok := vars["cid"]
@@ -211,13 +220,17 @@ func (cn *CntNode) downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
 	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(cid.String()))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, downloadedFilePath.String())
 
-	if err := os.Remove(downloadedFilePath.String()); err != nil {
-		cn.logger.Printf("Failed to remvoe tempory downloaded file. file path: %v", downloadedFilePath.String())
-	}
+	// Delete the temporary file.
+	defer func() {
+		if err := os.Remove(downloadedFilePath.String()); err != nil {
+			cn.logger.Printf("Failed to remvoe tempory downloaded file. file path: %v", downloadedFilePath.String())
+		}
+	}()
 
 	cn.logger.Printf("Successfully downloaded the file having cid %v", cid)
 }

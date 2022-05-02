@@ -26,6 +26,9 @@ const tmpDownloadFilesDirName = "tmp-download-files"
 type IpfsService struct {
 	ipfs icore.CoreAPI
 
+	// Create the temporary IPFS node. Data directory of this node will be cleaned up after the session ends.
+	isTemporary bool
+
 	ctx context.Context
 
 	logger *log.Logger
@@ -43,9 +46,16 @@ func NewIpfsService(ctx context.Context, logger *log.Logger) *IpfsService {
 func (ipfsService *IpfsService) Start() error {
 	var err error
 
-	ipfsService.ipfs, err = ipfsService.spawnDefault(ipfsService.ctx)
-	if err != nil {
-		return err
+	if ipfsService.isTemporary {
+		ipfsService.ipfs, err = ipfsService.spawnEphemeral(ipfsService.ctx)
+		if err != nil {
+			return err
+		}
+	} else {
+		ipfsService.ipfs, err = ipfsService.spawnDefault(ipfsService.ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

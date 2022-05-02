@@ -20,10 +20,18 @@ type CntNodeCmd struct {
 	ReadTimeout     time.Duration `help:"Read timeout duration of http server." default:"15s" type:"time.Duration"`
 	IdleTimeout     time.Duration `help:"Idle timeout duration of http server." default:"15s" type:"time.Duration"`
 	GracefulTimeout time.Duration `help:"Graceful shutdown timeout duration of http server." default:"15s" type:"time.Duration"`
+
+	TemporaryNode bool `help:"Create the temporary IPFS node. Data directory of this node will be cleaned up after the session ends." default:"false"`
 }
 
 func (cntNodeCmd *CntNodeCmd) Run(ctx *Context) error {
-	cntNode := cntNode.NewCntNode(cntNodeCmd.HttpAddr, cntNodeCmd.WriteTimeout, cntNodeCmd.ReadTimeout, cntNodeCmd.IdleTimeout, cntNodeCmd.GracefulTimeout, *log.Default())
+	cntNode := cntNode.NewCntNode(cntNodeCmd.HttpAddr,
+		cntNodeCmd.WriteTimeout,
+		cntNodeCmd.ReadTimeout,
+		cntNodeCmd.IdleTimeout,
+		cntNodeCmd.GracefulTimeout,
+		cntNodeCmd.TemporaryNode,
+		*log.Default())
 	cntNode.ListenAndServe()
 	return nil
 }
