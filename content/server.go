@@ -74,7 +74,7 @@ func (cn *CntNode) ListenAndServe() {
 	go func() {
 		cn.logger.Println("starting content node.")
 		// Start IPFS service.
-		cn.ipfs = NewIpfsService(context.Background(), &cn.logger)
+		cn.ipfs = NewIpfsService(context.Background(), &cn.logger, cn.isTemporary)
 		if err := cn.ipfs.Start(); err != nil {
 			cn.logger.Panic(err)
 		}

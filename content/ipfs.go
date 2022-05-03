@@ -35,10 +35,11 @@ type IpfsService struct {
 }
 
 // NewIpfsService creates the new instance of ipfs service.
-func NewIpfsService(ctx context.Context, logger *log.Logger) *IpfsService {
+func NewIpfsService(ctx context.Context, logger *log.Logger, isTemporary bool) *IpfsService {
 	return &IpfsService{
-		ctx:    ctx,
-		logger: logger,
+		ctx:         ctx,
+		logger:      logger,
+		isTemporary: isTemporary,
 	}
 }
 
