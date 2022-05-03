@@ -196,8 +196,6 @@ func (cn *CntNode) downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cn.logger.Println(c)
-
 	cid, err := cid.Decode(c)
 	if err != nil {
 		cn.logger.Print("Failed to decode the CID.")
@@ -208,8 +206,6 @@ func (cn *CntNode) downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-
-	cn.logger.Println(cid)
 
 	downloadedFilePath, err := cn.ipfs.DownloadFile(cid)
 	if err != nil {
