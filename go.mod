@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/alecthomas/kong v0.5.0
+	github.com/ethereum/go-ethereum v1.10.17
 	github.com/gorilla/mux v1.8.0
 	github.com/ipfs/go-cid v0.1.0
 	github.com/ipfs/go-ipfs v0.11.1

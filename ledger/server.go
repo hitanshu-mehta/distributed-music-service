@@ -2,14 +2,20 @@ package ledger
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gorilla/mux"
 )
+
+type ErrorInfo struct {
+	Msg string
+}
 
 type LedgerNode struct {
 	srv *http.Server
@@ -20,6 +26,9 @@ type LedgerNode struct {
 	idleTimeout     time.Duration
 	gracefulTimeout time.Duration
 
+	ethRPCUrl string
+	ethClient *EthClient
+
 	logger log.Logger
 }
 
@@ -27,6 +36,7 @@ type LedgerNode struct {
 func NewLedgerNode(addr string,
 	writeTimeout,
 	readTimeout, idleTimeout, gracefulTimeout time.Duration,
+	ethRPCUrl string,
 	logger log.Logger) *LedgerNode {
 	return &LedgerNode{
 		addr:            addr,
@@ -35,6 +45,8 @@ func NewLedgerNode(addr string,
 		idleTimeout:     idleTimeout,
 		gracefulTimeout: gracefulTimeout,
 
+		ethRPCUrl: ethRPCUrl,
+
 		logger: logger,
 	}
 }
@@ -42,7 +54,10 @@ func NewLedgerNode(addr string,
 // ListenAndServe initialize the rounter and starts the http server.
 func (l *LedgerNode) ListenAndServe() {
 	r := mux.NewRouter()
-	r.HandleFunc("/contruct", l.construct).Methods("GET")
+	r.HandleFunc("/initialize", l.initialize).Methods("POST")
+	r.HandleFunc("/song/add", l.addSong).Methods("POST")
+	r.HandleFunc("/song/{cid}", l.getSong).Methods("GET")
+	r.HandleFunc("/song/cids", l.getAllCids).Methods("GET")
 
 	l.srv = &http.Server{
 		Handler: r,
@@ -54,10 +69,13 @@ func (l *LedgerNode) ListenAndServe() {
 
 	go func() {
 		l.logger.Println("starting content node.")
+		if err := l.start(); err != nil {
+			l.logger.Panic("failed to start ledger node.", err)
+		}
 
 		l.logger.Println("content node is ready to serve request.")
 		if err := l.srv.ListenAndServe(); err != nil {
-			l.logger.Println(err)
+			l.logger.Panic("failed to start ledger node.", err)
 		}
 	}()
 
@@ -82,6 +100,66 @@ func (l *LedgerNode) ListenAndServe() {
 	os.Exit(0)
 }
 
-func (l *LedgerNode) construct(w http.ResponseWriter, r *http.Request) {
+func (l *LedgerNode) start() error {
+	conn, err := ethclient.Dial(l.ethRPCUrl)
+	if err != nil {
+		l.logger.Printf("failed to create eth client for url: %v", l.ethRPCUrl)
+		return err
+	}
+
+	l.ethClient = NewEthClient(conn, l.logger)
+	return nil
+}
+
+type PublisherDetails struct {
+	AccontAddress string
+	GasLimit      uint64
+	GasPrice      int64
+}
+
+type AddSongRequest struct {
+	CID string
+
+	PublisherDetails PublisherDetails
+
+	Artists     []string
+	SongName    string
+	Description string
+}
+
+// initialize the system. It will deploy token and publish song smart contracts.
+// Addresses of deployed smart contracts will be stored locally.
+func (l *LedgerNode) initialize(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func (l *LedgerNode) addSong(w http.ResponseWriter, r *http.Request) {
+	var req AddSongRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "Failed to decode request body.",
+		})
+		return
+	}
+
+	l.ethClient.addSong(&req.PublisherDetails, &song{
+		cid:         req.CID,
+		artists:     req.Artists,
+		name:        req.SongName,
+		description: req.Description,
+	})
+
+}
+
+func (l *LedgerNode) getSong(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("hello"))
+
+	// api.DeployApi()
+}
+
+func (l *LedgerNode) getAllCids(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("hello"))
+
 }

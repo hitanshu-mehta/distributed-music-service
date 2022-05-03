@@ -17,9 +17,15 @@ contract PublishSongContract {
                                     // songs with same CID.
     }
 
+    address public owner;
+
     mapping (string => Song) songs;
     uint16 public totalSongs = 0;
     string[] public cids;
+
+    constructor() {
+        owner = msg.sender;
+    }
 
     function addSong(string calldata _cid, string calldata _name, string[] calldata _artists, string calldata _description) public {
         require(!songs[_cid].isValid, "Song with given CID already added.");
