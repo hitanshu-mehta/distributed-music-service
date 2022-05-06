@@ -16,7 +16,7 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
-const tmpUploadFilesDirName = "tmp-upload-files"
+const tmpUploadFilesDirName = "app/upload"
 
 type ErrorInfo struct {
 	Msg string

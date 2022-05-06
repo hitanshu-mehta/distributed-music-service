@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gorilla/mux"
 )
+
+const smartContractAddress = "app/contracts"
 
 type ErrorInfo struct {
 	Msg string
@@ -56,8 +59,8 @@ func (l *LedgerNode) ListenAndServe() {
 	r := mux.NewRouter()
 	r.HandleFunc("/initialize", l.initialize).Methods("POST")
 	r.HandleFunc("/song/add", l.addSong).Methods("POST")
-	r.HandleFunc("/song/{cid}", l.getSong).Methods("GET")
 	r.HandleFunc("/song/cids", l.getAllCids).Methods("GET")
+	r.HandleFunc("/song/{cid}", l.getSong).Methods("GET")
 
 	l.srv = &http.Server{
 		Handler: r,
@@ -68,12 +71,12 @@ func (l *LedgerNode) ListenAndServe() {
 	}
 
 	go func() {
-		l.logger.Println("starting content node.")
+		l.logger.Println("starting ledger node.")
 		if err := l.start(); err != nil {
 			l.logger.Panic("failed to start ledger node.", err)
 		}
 
-		l.logger.Println("content node is ready to serve request.")
+		l.logger.Println("ledger node is ready to serve request.")
 		if err := l.srv.ListenAndServe(); err != nil {
 			l.logger.Panic("failed to start ledger node.", err)
 		}
@@ -112,25 +115,51 @@ func (l *LedgerNode) start() error {
 }
 
 type PublisherDetails struct {
-	AccontAddress string
-	GasLimit      uint64
-	GasPrice      int64
+	AccontAddress string `json:"address"`
+	GasLimit      uint64 `json:"gas_limit"`
+	GasPrice      int64  `json:"gas_price"`
 }
 
 type AddSongRequest struct {
-	CID string
+	CID string `json:"cid"`
 
-	PublisherDetails PublisherDetails
+	PublisherDetails PublisherDetails `json:"publisher_details"`
 
-	Artists     []string
-	SongName    string
-	Description string
+	Artists     []string `json:"artists"`
+	SongName    string   `json:"song_name"`
+	Description string   `json:"description"`
+}
+
+type InitializeRequest struct {
+	Address string `json:"address"`
+
+	GasLimit uint64 `json:"gas_limit"`
+	GasPrice int64  `json:"gas_price"`
 }
 
 // initialize the system. It will deploy token and publish song smart contracts.
 // Addresses of deployed smart contracts will be stored locally.
 func (l *LedgerNode) initialize(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		l.logger.Println("failed to parse body.")
+		http.Error(w, "can't read body", http.StatusBadRequest)
+		return
+	}
 
+	var req InitializeRequest
+	if err = json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "can't read body", http.StatusBadRequest)
+		return
+	}
+
+	if err = l.ethClient.initialize(req.Address, req.GasLimit, req.GasPrice); err != nil {
+		http.Error(w, "failed to deploy smart contracts", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (l *LedgerNode) addSong(w http.ResponseWriter, r *http.Request) {
@@ -151,15 +180,64 @@ func (l *LedgerNode) addSong(w http.ResponseWriter, r *http.Request) {
 		description: req.Description,
 	})
 
+	w.WriteHeader(http.StatusCreated)
+}
+
+type GetSongDetailsResponse struct {
+	Cid string
+
+	Artists     []string
+	Name        string
+	Description string
 }
 
 func (l *LedgerNode) getSong(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("hello"))
+	vars := mux.Vars(r)
+	c, ok := vars["cid"]
+	if !ok {
+		l.logger.Print("CID is not present in the get song request.")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "CID is not present in the get request.",
+		})
+		return
+	}
 
-	// api.DeployApi()
+	song, err := l.ethClient.getSong(c)
+	if err != nil {
+		l.logger.Printf("failed to fetch song details. %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "Failed to fetch song details",
+		})
+		return
+	}
+
+	resp := &GetSongDetailsResponse{
+		Cid:         song.cid,
+		Name:        song.name,
+		Description: song.description,
+		Artists:     song.artists,
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(resp)
+}
+
+type GetAllCIDsResponse struct {
+	CIDS []string `json:"cids"`
 }
 
 func (l *LedgerNode) getAllCids(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("hello"))
+	cids, err := l.ethClient.getAllCids()
+	if err != nil {
+		l.logger.Printf("failed to fetch all cids. %v", err)
+		http.Error(w, "failed to fetch all cids.", http.StatusInternalServerError)
+		return
+	}
 
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(GetAllCIDsResponse{
+		CIDS: cids,
+	})
 }

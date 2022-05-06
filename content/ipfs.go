@@ -20,7 +20,7 @@ import (
 	"github.com/ipfs/interface-go-ipfs-core/path"
 )
 
-const tmpDownloadFilesDirName = "tmp-download-files"
+const tmpDownloadFilesDirName = "app/download"
 
 // IpfsService interacts with ipfs node.
 type IpfsService struct {

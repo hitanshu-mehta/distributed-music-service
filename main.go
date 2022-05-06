@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -40,7 +42,7 @@ func (contentCmd *ContentCmd) Run(ctx *Context) error {
 
 type LedgerCmd struct {
 	HttpAddr  string `name:"http-addr" help:"Http address to connect with content node." default:"127.0.0.1:3000"`
-	ethRPCUrl string `name:"ethereum-rpc-url" help:"URL to access ethereum RPC API."`
+	EthRPCUrl string `name:"ethereum-rpc-url" help:"URL to access ethereum RPC API." default:"http://127.0.0.1:8545"`
 
 	WriteTimeout    time.Duration `help:"Write timeout duration of http server." default:"15s" type:"time.Duration"`
 	ReadTimeout     time.Duration `help:"Read timeout duration of http server." default:"15s" type:"time.Duration"`
@@ -55,7 +57,7 @@ func (ledgerCmd *LedgerCmd) Run(ctx *Context) error {
 		ledgerCmd.ReadTimeout,
 		ledgerCmd.IdleTimeout,
 		ledgerCmd.GracefulTimeout,
-		ledgerCmd.ethRPCUrl,
+		ledgerCmd.EthRPCUrl,
 		*log.Default(),
 	)
 	ledgerNode.ListenAndServe()
@@ -76,6 +78,14 @@ func main() {
 			Compact: true,
 			Summary: true,
 		}))
+
+	makeAppDir()
 	err := ctx.Run(&Context{Debug: cli.Debug})
 	ctx.FatalIfErrorf(err)
+}
+
+func makeAppDir() {
+	if err := os.Mkdir("app", os.ModePerm); err != nil {
+		fmt.Println("app directory already exists.")
+	}
 }
