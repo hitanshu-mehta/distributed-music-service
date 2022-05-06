@@ -3,3 +3,4 @@ app/**
 webclient/node_modules
 
 build/
+bin/

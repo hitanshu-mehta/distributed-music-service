@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/hitanshu-mehta/distributed-music-service/ledger/contracts/api"
+	"github.com/hitanshu-mehta/distributed-music-service/ledger/contracts/publishsongapi"
 )
 
 // EthClient is the wrapper around rpc client provided by geth.
@@ -52,7 +52,7 @@ func (c *EthClient) addSong(publisher *PublisherDetails, song *song) error {
 	}
 
 	//creating api object to intract with smart contract function
-	conn, err := api.NewApi(common.HexToAddress(smtData.PublishSongContractAddr), c.client)
+	conn, err := publishsongapi.NewPublishsongapi(common.HexToAddress(smtData.PublishSongContractAddr), c.client)
 	if err != nil {
 		c.logger.Print("failed to create new api.", err)
 		return errors.New("failed to add song")
@@ -85,7 +85,7 @@ func (c *EthClient) initialize(addr string, gasLimit uint64, gasPrice int64) err
 		return err
 	}
 
-	contractAddr, _, _, err := api.DeployApi(auth, c.client)
+	contractAddr, _, _, err := publishsongapi.DeployPublishsongapi(auth, c.client)
 	if err != nil {
 		c.logger.Println("failed to deploy contract.")
 		return err
@@ -122,7 +122,7 @@ func (c *EthClient) getSong(cid string) (*song, error) {
 	}
 
 	//creating api object to intract with smart contract function
-	conn, err := api.NewApi(common.HexToAddress(smtData.PublishSongContractAddr), c.client)
+	conn, err := publishsongapi.NewPublishsongapi(common.HexToAddress(smtData.PublishSongContractAddr), c.client)
 	if err != nil {
 		c.logger.Print("failed to create new api.", err)
 		return nil, errors.New("failed to get song")
@@ -151,7 +151,7 @@ func (c *EthClient) getAllCids() ([]string, error) {
 	}
 
 	//creating api object to intract with smart contract function
-	conn, err := api.NewApi(common.HexToAddress(smtData.PublishSongContractAddr), c.client)
+	conn, err := publishsongapi.NewPublishsongapi(common.HexToAddress(smtData.PublishSongContractAddr), c.client)
 	if err != nil {
 		c.logger.Print("failed to create new api.", err)
 		return nil, errors.New("failed to get song cids")

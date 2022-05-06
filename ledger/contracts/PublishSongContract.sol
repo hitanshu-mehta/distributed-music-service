@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.5.5;
+pragma experimental ABIEncoderV2;
 
 contract PublishSongContract {
 
@@ -23,11 +24,11 @@ contract PublishSongContract {
     uint16 public totalSongs = 0;
     string[] public cids;
 
-    constructor() {
+    constructor() public {
         owner = msg.sender;
     }
 
-    function addSong(string calldata _cid, string calldata _name, string[] calldata _artists, string calldata _description) public {
+    function addSong(string memory _cid, string memory _name, string[] memory _artists, string memory _description) public {
         require(!songs[_cid].isValid, "Song with given CID already added.");
 
         totalSongs += 1;
@@ -35,7 +36,7 @@ contract PublishSongContract {
         songs[_cid] = Song(_cid, _name, _artists, _description, block.timestamp, msg.sender, true);
     }
 
-    function getSong(string calldata _cid) public view returns (Song memory) {
+    function getSong(string memory _cid) public view returns (Song memory) {
         require(songs[_cid].isValid, "No song with given CID.");
         return songs[_cid];
     }
