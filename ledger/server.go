@@ -62,6 +62,9 @@ func (l *LedgerNode) ListenAndServe() {
 	r.HandleFunc("/song/cids", l.getAllCids).Methods("GET")
 	r.HandleFunc("/song/{cid}", l.getSong).Methods("GET")
 
+	r.HandleFunc("/token/buy", l.buyToken).Methods("POST")
+	r.HandleFunc("/token/transfer", l.tranfer).Methods("POST")
+
 	l.srv = &http.Server{
 		Handler: r,
 
@@ -115,9 +118,10 @@ func (l *LedgerNode) start() error {
 }
 
 type PublisherDetails struct {
-	AccontAddress string `json:"address"`
-	GasLimit      uint64 `json:"gas_limit"`
-	GasPrice      int64  `json:"gas_price"`
+	AccountAddress string `json:"address"`
+	GasLimit       uint64 `json:"gas_limit"`
+	GasPrice       int64  `json:"gas_price"`
+	Value          int64  `json:"value" default:"0"`
 }
 
 type AddSongRequest struct {
@@ -240,4 +244,42 @@ func (l *LedgerNode) getAllCids(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(GetAllCIDsResponse{
 		CIDS: cids,
 	})
+}
+
+type BuyTokenRequest struct {
+	PublisherDetails PublisherDetails `json:"publisher_details"`
+}
+
+type BuyTokenResponse struct {
+	TotalBalance int64 `json:"total_balance"`
+}
+
+func (l *LedgerNode) buyToken(w http.ResponseWriter, r *http.Request) {
+	var req BuyTokenRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "Failed to decode request body.",
+		})
+		return
+	}
+
+	balance, err := l.ethClient.buyToken(&req.PublisherDetails)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&ErrorInfo{
+			Msg: "Failed to decode request body.",
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(&BuyTokenResponse{
+		TotalBalance: balance.Int64(),
+	})
+}
+
+func (l *LedgerNode) tranfer(w http.ResponseWriter, r *http.Request) {
+
 }
